@@ -1,36 +1,65 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ♔ 3D Chess — Premium Edition
+
+A fully interactive 3D chess game built with **Three.js** and **Next.js**. Features hand-crafted Staunton-style piece models, smooth move animations, and a polished dark UI.
+
+## Features
+
+- **3D Staunton Pieces** — All 6 piece types modeled with detailed geometry:
+  - Pawns, Bishops, Queen & King use high-detail `LatheGeometry` profiles
+  - Knights use `ExtrudeGeometry` from a 2D horse-head silhouette with notched mane
+  - Rooks feature rounded merlons and a hollow-top tower
+- **Full Chess Logic** — Powered by [chess.js](https://github.com/jhlywa/chess.js) with legal move validation, check/checkmate/draw detection, and auto-promotion
+- **Interactive Board** — Click to select pieces, see valid moves highlighted, and move with smooth arc animations
+- **Orbit Controls** — Rotate, pan, and zoom the camera around the board
+- **Atmospheric Scene** — Dramatic 4-light setup, ambient particles, fog, and shadow-casting ground plane
+- **Coordinate Labels** — A–H and 1–8 displayed around the board edges
+- **Captured Pieces** — Track captured pieces for both sides
+- **Move History** — See notation for all played moves
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Framework | Next.js 16 (App Router) |
+| 3D Engine | Three.js |
+| Game Logic | chess.js |
+| Animations | @tweenjs/tween.js |
+| Styling | Vanilla CSS (glassmorphism UI) |
+| Language | TypeScript |
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+# Install dependencies
+npm install
+
+# Start development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Controls
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Action | Input |
+|--------|-------|
+| Select / Move piece | Left-click |
+| Orbit camera | Right-click + drag |
+| Zoom | Scroll wheel |
+| New game | Click "New Game" button |
 
-## Learn More
+## Project Structure
 
-To learn more about Next.js, take a look at the following resources:
+```
+src/
+├── app/
+│   ├── globals.css      # Design system & UI styles
+│   ├── layout.tsx        # Root layout with metadata
+│   └── page.tsx          # Main page (renders ChessGame)
+└── components/
+    └── ChessGame.tsx     # All 3D rendering, piece models, and game logic
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## License
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT

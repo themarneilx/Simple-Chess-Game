@@ -1,21 +1,367 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
 :root {
-  --background: #0f172a;
-  --foreground: #ffffff;
+    --background: #0a0e1a;
+    --foreground: #e2e8f0;
+    --glass-bg: rgba(12, 17, 33, 0.75);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --accent: #c9a96e;
+    --accent-glow: rgba(201, 169, 110, 0.25);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  font-family: Arial, Helvetica, sans-serif;
+    color: var(--foreground);
+    background: var(--background);
+    overflow: hidden;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-kbd {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+/* ─── Glass Panel ─── */
+.glass-panel {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    padding: 18px;
+    color: var(--foreground);
+    z-index: 9999;
+    pointer-events: auto;
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.4),
+        0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+    position: relative;
+    overflow: hidden;
+}
+
+.glass-panel::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: 14px;
+    padding: 1px;
+    background: linear-gradient(
+        160deg,
+        rgba(201, 169, 110, 0.2),
+        rgba(255, 255, 255, 0.05),
+        transparent
+    );
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+}
+
+/* ─── Animations ─── */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(1.1); }
+}
+
+@keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.panel-fade-in {
+    animation: fadeInUp 0.5s ease-out both;
+}
+
+/* ─── Panel Headers ─── */
+.panel-header {
+    font-weight: 600;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: rgba(255, 255, 255, 0.45);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.panel-icon {
+    font-size: 14px;
+}
+
+.panel-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* ─── Controls ─── */
+.control-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    margin-bottom: 8px;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.control-row kbd {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 3px 8px;
+    border-radius: 5px;
+    font-size: 10px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.45);
+}
+
+/* ─── Reset Button ─── */
+.btn-reset {
+    width: 100%;
+    background: rgba(201, 169, 110, 0.15);
+    border: 1px solid rgba(201, 169, 110, 0.3);
+    color: #c9a96e;
+    padding: 10px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    transition: all 0.2s ease;
+    font-family: 'Inter', sans-serif;
+}
+
+.btn-reset:hover {
+    background: rgba(201, 169, 110, 0.25);
+    border-color: rgba(201, 169, 110, 0.5);
+}
+
+.btn-reset:active {
+    transform: scale(0.98);
+}
+
+/* ─── Turn Indicator ─── */
+.turn-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin: 8px 0;
+}
+
+.turn-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    animation: pulse 2.5s ease-in-out infinite;
+}
+
+.turn-dot-white {
+    background: #f0ead6;
+    box-shadow: 0 0 8px rgba(240, 234, 214, 0.4);
+}
+
+.turn-dot-black {
+    background: #2d3142;
+    box-shadow: 0 0 8px rgba(45, 49, 66, 0.4);
+    border: 1.5px solid #5a5f72;
+}
+
+.turn-text {
+    font-size: 20px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+/* ─── Status Badges ─── */
+.status-badge {
+    margin-top: 10px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 1px;
+    text-align: center;
+}
+
+.status-checkmate {
+    background: rgba(220, 80, 80, 0.12);
+    color: #e8817a;
+    border: 1px solid rgba(220, 80, 80, 0.25);
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+.status-check {
+    background: rgba(201, 169, 110, 0.12);
+    color: #c9a96e;
+    border: 1px solid rgba(201, 169, 110, 0.25);
+}
+
+.status-draw {
+    background: rgba(148, 163, 184, 0.12);
+    color: #8891a5;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+/* ─── Captured Pieces ─── */
+.capture-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.captured-pieces {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-height: 32px;
+    align-items: center;
+}
+
+.captured-piece {
+    font-size: 22px;
+    transition: transform 0.2s;
+    cursor: default;
+}
+
+.captured-piece:hover {
+    transform: scale(1.2);
+}
+
+.captured-dark {
+    color: #1e1b4b;
+    text-shadow: 0 0 4px rgba(255, 255, 255, 0.15);
+    -webkit-text-stroke: 0.5px rgba(255, 255, 255, 0.12);
+}
+
+.captured-light {
+    color: #d4cfc0;
+    text-shadow: 0 0 6px rgba(255, 255, 255, 0.2);
+}
+
+.empty-captures {
+    font-size: 11px;
+    opacity: 0.3;
+    font-style: italic;
+}
+
+/* ─── Move History ─── */
+.move-history {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    max-height: 60px;
+    overflow-y: auto;
+    padding: 4px 0;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.08) transparent;
+}
+
+.move-history::-webkit-scrollbar {
+    width: 4px;
+}
+
+.move-history::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+}
+
+.move-entry {
+    font-size: 12px;
+    font-weight: 500;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Inter', monospace;
+}
+
+.move-white {
+    color: #d4cfc0;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.move-black {
+    color: #8891a5;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.move-number {
+    color: rgba(255, 255, 255, 0.25);
+    margin-right: 2px;
+    font-size: 10px;
+}
+
+/* ─── Title ─── */
+.game-title {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 7px;
+    text-transform: uppercase;
+    color: rgba(201, 169, 110, 0.6);
+}
+
+.game-subtitle {
+    font-size: 9px;
+    letter-spacing: 5px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.2);
+    margin-top: 2px;
+}
+
+/* ─── Loading Screen ─── */
+.loading-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    background: #0a0e1a;
+    gap: 20px;
+}
+
+.loading-spinner {
+    width: 36px;
+    height: 36px;
+    border: 2px solid rgba(255, 255, 255, 0.08);
+    border-top-color: rgba(201, 169, 110, 0.6);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.loading-text {
+    font-size: 13px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.35);
+    font-weight: 400;
 }
