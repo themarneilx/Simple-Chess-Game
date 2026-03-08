@@ -1,12 +1,13 @@
 export type GameMode = 'ai' | 'online' | 'local';
 export type Difficulty = 1 | 2 | 3;
 export type PlayerColor = 'w' | 'b';
-export type RoomStatus = 'waiting' | 'playing' | 'finished';
+export type RoomStatus = 'waiting' | 'ready' | 'playing' | 'finished';
 
 export interface Player {
   socketId: string;
   color: PlayerColor;
   connected: boolean;
+  name: string;
 }
 
 export interface Room {
@@ -17,7 +18,7 @@ export interface Room {
   status: RoomStatus;
   fen: string;
   createdAt: number;
-  creatorName?: string;
+  creatorSocketId: string;
 }
 
 export interface RoomInfo {
@@ -26,16 +27,26 @@ export interface RoomInfo {
   isPrivate: boolean;
   status: RoomStatus;
   createdAt: number;
+  creatorName?: string;
+}
+
+export interface ChatMessage {
+  sender: string;
+  text: string;
+  timestamp: number;
+  color?: PlayerColor;
 }
 
 // Socket event payloads
 export interface CreateRoomPayload {
   isPrivate: boolean;
+  playerName: string;
 }
 
 export interface JoinRoomPayload {
   roomId?: string;
   code?: string;
+  playerName: string;
 }
 
 export interface MakeMovePayload {

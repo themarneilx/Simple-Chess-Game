@@ -30,13 +30,15 @@ function generateRoomCode() {
 function getPublicRooms() {
   const publicRooms = [];
   for (const [id, room] of rooms) {
-    if (!room.isPrivate && room.status === 'waiting') {
+    if (!room.isPrivate && (room.status === 'waiting' || room.status === 'ready')) {
+      const creator = room.players.find((p) => p.socketId === room.creatorSocketId);
       publicRooms.push({
         id,
         playerCount: room.players.length,
         isPrivate: room.isPrivate,
         status: room.status,
         createdAt: room.createdAt,
+        creatorName: creator?.name || 'Unknown',
       });
     }
   }
@@ -61,7 +63,7 @@ app.prepare().then(() => {
     console.log(`[Socket] Connected: ${socket.id}`);
 
     // Create a new room
-    socket.on('create-room', ({ isPrivate }, callback) => {
+    socket.on('create-room', ({ isPrivate, playerName }, callback) => {
       const roomId = generateRoomId();
       const code = isPrivate ? generateRoomCode() : null;
       const playerColor = Math.random() < 0.5 ? 'w' : 'b';
@@ -69,20 +71,22 @@ app.prepare().then(() => {
       const room = {
         id: roomId,
         players: [
-          { socketId: socket.id, color: playerColor, connected: true },
+          { socketId: socket.id, color: playerColor, connected: true, name: playerName || 'Player 1' },
         ],
         isPrivate,
         code,
         status: 'waiting',
         fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
         createdAt: Date.now(),
+        creatorSocketId: socket.id,
+        chatHistory: [],
       };
 
       rooms.set(roomId, room);
       socket.join(roomId);
 
       console.log(
-        `[Room] Created ${isPrivate ? 'private' : 'public'} room ${roomId}${code ? ` (code: ${code})` : ''}`
+        `[Room] Created ${isPrivate ? 'private' : 'public'} room ${roomId}${code ? ` (code: ${code})` : ''} by ${playerName}`
       );
 
       callback({
@@ -97,7 +101,7 @@ app.prepare().then(() => {
     });
 
     // Join a room (by ID or code)
-    socket.on('join-room', ({ roomId, code }, callback) => {
+    socket.on('join-room', ({ roomId, code, playerName }, callback) => {
       let targetRoom = null;
       let targetRoomId = roomId;
 
@@ -137,29 +141,79 @@ app.prepare().then(() => {
 
       const existingColor = targetRoom.players[0].color;
       const newColor = existingColor === 'w' ? 'b' : 'w';
+      const joinerName = playerName || 'Player 2';
 
       targetRoom.players.push({
         socketId: socket.id,
         color: newColor,
         connected: true,
+        name: joinerName,
       });
-      targetRoom.status = 'playing';
+      // Don't auto-start — set to 'ready', wait for creator to press "Start Game"
+      targetRoom.status = 'ready';
 
       socket.join(targetRoomId);
 
-      console.log(`[Room] Player joined room ${targetRoomId}, game starting!`);
+      const creatorPlayer = targetRoom.players.find((p) => p.socketId === targetRoom.creatorSocketId);
+
+      console.log(`[Room] ${joinerName} joined room ${targetRoomId}, waiting for creator to start.`);
 
       callback({
         success: true,
         roomId: targetRoomId,
         color: newColor,
+        opponentName: creatorPlayer?.name || 'Opponent',
+        isCreator: false,
       });
 
-      // Notify both players the game is starting
-      io.to(targetRoomId).emit('game-start', {
-        roomId: targetRoomId,
-        fen: targetRoom.fen,
+      // Notify the room creator that someone joined
+      socket.to(targetRoomId).emit('player-joined', {
+        playerName: joinerName,
+        playerColor: newColor,
       });
+
+      // Send existing chat history to the joiner
+      if (targetRoom.chatHistory && targetRoom.chatHistory.length > 0) {
+        socket.emit('chat-history', targetRoom.chatHistory);
+      }
+
+      // Broadcast updated room list
+      io.emit('rooms-updated', getPublicRooms());
+    });
+
+    // Start game (creator only)
+    socket.on('start-game', ({ roomId }, callback) => {
+      const room = rooms.get(roomId);
+      if (!room) {
+        callback?.({ success: false, error: 'Room not found' });
+        return;
+      }
+
+      if (room.creatorSocketId !== socket.id) {
+        callback?.({ success: false, error: 'Only the room creator can start the game' });
+        return;
+      }
+
+      if (room.players.length < 2) {
+        callback?.({ success: false, error: 'Need 2 players to start' });
+        return;
+      }
+
+      room.status = 'playing';
+
+      console.log(`[Room] Game started in room ${roomId}!`);
+
+      // Notify both players the game is starting, including opponent names
+      room.players.forEach((player) => {
+        const opponent = room.players.find((p) => p.socketId !== player.socketId);
+        io.to(player.socketId).emit('game-start', {
+          roomId,
+          fen: room.fen,
+          opponentName: opponent?.name || 'Opponent',
+        });
+      });
+
+      callback?.({ success: true });
 
       // Broadcast updated room list
       io.emit('rooms-updated', getPublicRooms());
@@ -174,10 +228,67 @@ app.prepare().then(() => {
     socket.on('check-room', ({ roomId }, callback) => {
       const room = rooms.get(roomId);
       if (room) {
-        callback({ playing: room.status === 'playing', playerCount: room.players.length });
+        const player = room.players.find((p) => p.socketId === socket.id);
+        const opponent = room.players.find((p) => p.socketId !== socket.id);
+        callback({
+          playing: room.status === 'playing',
+          playerCount: room.players.length,
+          opponentName: opponent?.name || null,
+        });
       } else {
-        callback({ playing: false, playerCount: 0 });
+        callback({ playing: false, playerCount: 0, opponentName: null });
       }
+    });
+
+    // Leave room (manually triggered from Lobby "Cancel" button)
+    socket.on('leave-room', ({ roomId }) => {
+      const room = rooms.get(roomId);
+      if (!room) return;
+
+      const playerIndex = room.players.findIndex((p) => p.socketId === socket.id);
+      if (playerIndex !== -1) {
+        if (room.status === 'waiting' || room.status === 'ready') {
+          // If creator leaves, delete the entire room
+          if (room.creatorSocketId === socket.id) {
+            socket.to(roomId).emit('room-closed');
+            rooms.delete(roomId);
+            console.log(`[Room] Creator canceled room ${roomId}`);
+          } else {
+            // If joiner leaves, put room back to 'waiting'
+            room.players.splice(playerIndex, 1);
+            room.status = 'waiting';
+            socket.to(roomId).emit('player-left', { playerName: room.players[playerIndex]?.name });
+            console.log(`[Room] Player left room ${roomId}, back to waiting`);
+          }
+        }
+        socket.leave(roomId);
+        // Immediately broadcast updated rooms
+        io.emit('rooms-updated', getPublicRooms());
+      }
+    });
+
+    // Chat message (in-game and lobby)
+    socket.on('chat-message', ({ roomId, text, sender, color }) => {
+      const room = rooms.get(roomId);
+      if (!room) return;
+
+      const message = {
+        sender: sender || 'Anonymous',
+        text,
+        timestamp: Date.now(),
+        color: color || null,
+      };
+
+      // Store in room chat history
+      if (!room.chatHistory) room.chatHistory = [];
+      room.chatHistory.push(message);
+      // Keep only last 100 messages
+      if (room.chatHistory.length > 100) room.chatHistory.shift();
+
+      // Broadcast to everyone in room (including sender)
+      io.to(roomId).emit('chat-message', message);
+
+      console.log(`[Chat] Room ${roomId}: ${sender}: ${text}`);
     });
 
     // Make a move
@@ -233,10 +344,20 @@ app.prepare().then(() => {
           (p) => p.socketId === socket.id
         );
         if (playerIndex !== -1) {
-          if (room.status === 'waiting') {
-            // Room was waiting, just delete it
-            rooms.delete(roomId);
-            console.log(`[Room] Deleted empty room ${roomId}`);
+          if (room.status === 'waiting' || room.status === 'ready') {
+            // If creator disconnects, delete the room
+            if (room.creatorSocketId === socket.id) {
+              // Notify any joined player
+              socket.to(roomId).emit('room-closed');
+              rooms.delete(roomId);
+              console.log(`[Room] Deleted room ${roomId} (creator left)`);
+            } else {
+              // Non-creator left from ready room, go back to waiting
+              room.players.splice(playerIndex, 1);
+              room.status = 'waiting';
+              socket.to(roomId).emit('player-left', { playerName: room.players[playerIndex]?.name });
+              console.log(`[Room] Player left waiting room ${roomId}`);
+            }
           } else if (room.status === 'playing') {
             // Mark player as disconnected
             room.players[playerIndex].connected = false;

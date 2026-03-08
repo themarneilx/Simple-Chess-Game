@@ -10,6 +10,8 @@ function GameContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [playerColor, setPlayerColor] = useState<PlayerColor>('w');
+  const [playerName, setPlayerName] = useState('');
+  const [opponentName, setOpponentName] = useState('');
   const [ready, setReady] = useState(false);
 
   const mode = (searchParams.get('mode') || 'ai') as GameMode;
@@ -23,6 +25,14 @@ function GameContent() {
       if (storedColor === 'w' || storedColor === 'b') {
         setPlayerColor(storedColor);
       }
+      // Read names
+      const storedName = sessionStorage.getItem('chess-player-name') || 'Player';
+      setPlayerName(storedName);
+      const storedOpponent = sessionStorage.getItem(`chess-opponent-${roomId}`) || 'Opponent';
+      setOpponentName(storedOpponent);
+    } else {
+      setPlayerName('You');
+      setOpponentName(mode === 'ai' ? 'AI' : 'Player 2');
     }
     setReady(true);
   }, [mode, roomId]);
@@ -43,6 +53,8 @@ function GameContent() {
         difficulty={difficulty}
         roomId={roomId}
         playerColor={playerColor}
+        playerName={playerName}
+        opponentName={opponentName}
         onExit={() => router.push('/')}
       />
     </main>
