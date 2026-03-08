@@ -1319,3 +1319,154 @@ body {
     width: 14px;
     height: 14px;
 }
+
+/* ═══════════════════════════════════════════════════════
+   MOBILE RESPONSIVENESS
+   ═══════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+    /* Make glass panels fit screen with margins, allow some overlapping gracefully but use less padding */
+    .glass-panel {
+        padding: 12px;
+        border-radius: 10px;
+    }
+
+    /* Top Left: Controls Panels */
+    .mobile-controls {
+        position: fixed !important;
+        top: 20px !important;
+        left: 20px !important;
+        width: calc(100% - 40px) !important;
+        max-width: none !important;
+        z-index: 10001 !important;
+        display: none !important; /* Force hide by default on mobile */
+    }
+
+    /* Override the !important hide when toggle is active */
+    .glass-panel.mobile-controls.visible {
+        display: block !important;
+    }
+
+    /* Reusable button to open menu on mobile */
+    .mobile-menu-btn {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        z-index: 10000;
+        background: var(--glass-bg);
+        border: 1px solid var(--glass-border);
+        border-radius: 8px;
+        padding: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(8px);
+        color: #c9a96e;
+        cursor: pointer;
+    }
+
+    /* Top Right: Turn Indicator & Chat */
+    .mobile-top-right {
+        top: 20px !important;
+        right: 20px !important;
+        max-width: 160px !important;
+        min-width: 140px !important;
+        max-height: 40vh !important;
+    }
+
+    .player-names-row {
+        flex-direction: column;
+        gap: 4px;
+        margin-bottom: 8px !important;
+        align-items: stretch;
+    }
+    .player-name-badge {
+        padding: 4px 8px !important;
+        font-size: 10px !important;
+    }
+
+    .turn-text {
+        font-size: 14px !important;
+    }
+
+    .status-badge {
+        font-size: 10px !important;
+        padding: 4px 8px !important;
+    }
+
+    /* Bottom left & right captures scale down */
+    .mobile-bottom-left {
+        bottom: 20px !important;
+        left: 20px !important;
+        min-width: 140px !important;
+        max-width: 45vw !important;
+    }
+
+    .mobile-bottom-right {
+        bottom: 20px !important;
+        right: 20px !important;
+        min-width: 140px !important;
+        max-width: 45vw !important;
+    }
+
+    .captured-piece {
+        font-size: 16px !important;
+    }
+    .panel-label {
+        font-size: 9px !important;
+        margin-bottom: 4px !important;
+    }
+
+    /* Bottom Center: Move history */
+    .mobile-bottom-center {
+        bottom: 90px !important; 
+        width: calc(100% - 40px) !important;
+        max-width: 300px !important;
+    }
+
+    .move-history {
+        max-height: 40px !important;
+    }
+
+    .move-entry {
+        font-size: 10px !important;
+        padding: 2px 4px !important;
+    }
+
+    .game-title {
+        font-size: 12px;
+        letter-spacing: 4px;
+    }
+
+    .game-subtitle {
+        font-size: 8px;
+        letter-spacing: 3px;
+    }
+    
+    .chat-bubble {
+        padding: 6px 8px !important;
+        margin-bottom: 6px !important;
+    }
+    .chat-sender { font-size: 9px !important; }
+    .chat-text { font-size: 11px !important; }
+    .chat-input { font-size: 12px !important; padding: 6px 8px !important; }
+    .chat-send { padding: 6px 12px !important; }
+    
+    .mobile-only {
+        display: block !important;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════
+   DESKTOP RESPONSIVENESS OVERRIDES
+   ═══════════════════════════════════════════════════════ */
+@media (min-width: 769px) {
+    .mobile-menu-btn {
+        display: none !important;
+    }
+    .mobile-controls {
+        display: block !important;
+    }
+    .mobile-only {
+        display: none !important;
+    }
+}
