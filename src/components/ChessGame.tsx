@@ -237,6 +237,9 @@ const ChessGame: React.FC<ChessGameProps> = ({
     const [chatInput, setChatInput] = useState('');
     const chatEndRef = useRef<HTMLDivElement>(null);
 
+    // Mobile specific state
+    const [showControls, setShowControls] = useState(false);
+
     // Refs for values that need to be read inside the useEffect closure
     const waitingRef = useRef(mode === 'online');
     const aiThinkingRef = useRef(false);
@@ -255,6 +258,7 @@ const ChessGame: React.FC<ChessGameProps> = ({
     const highlightMeshesRef = useRef<THREE.Mesh[]>([]);
     const hoverMeshRef = useRef<THREE.Mesh | null>(null);
     const particlesRef = useRef<THREE.Points | null>(null);
+    const orbitControlsRef = useRef<any>(null); // To toggle controls during interaction
     const gameRef = useRef(game);
 
     const materials = useRef({
@@ -518,6 +522,9 @@ const ChessGame: React.FC<ChessGameProps> = ({
         controls.maxPolarAngle = Math.PI / 2 - 0.08;
         controls.minDistance = 15;
         controls.maxDistance = 70;
+        // Make panning two-finger only on mobile so one finger can move pieces if we refine that, 
+        // but default is fine. We will disable controls completely when dragging a piece.
+        orbitControlsRef.current = controls;
 
         scene.add(new THREE.AmbientLight(0xccd5e0, 0.6));
         const keyLight = new THREE.DirectionalLight(0xfff0d4, 1.8);
@@ -660,6 +667,9 @@ const ChessGame: React.FC<ChessGameProps> = ({
             })();
 
             if (obj && obj.userData.isPiece && obj.userData.color === currentGame.turn() && canMove) {
+                // Disable orbit controls while dragging
+                if (orbitControlsRef.current) orbitControlsRef.current.enabled = false;
+
                 if (selectedPieceRef.current)
                     new TWEEN.Tween(selectedPieceRef.current.position, tweenGroup.current).to({ y: 0 }, 120).easing(TWEEN.Easing.Back.Out).start();
                 clearHighlights();
@@ -677,6 +687,7 @@ const ChessGame: React.FC<ChessGameProps> = ({
                     });
                 }
             } else if (selectedPieceRef.current && canMove) {
+                if (orbitControlsRef.current) orbitControlsRef.current.enabled = true;
                 const targetX = obj?.userData.gridX;
                 const targetZ = obj?.userData.gridZ;
                 const move = validMovesRef.current.find((m) => {
@@ -740,6 +751,9 @@ const ChessGame: React.FC<ChessGameProps> = ({
                     new TWEEN.Tween(piece.position, tweenGroup.current).to({ y: 0 }, 120).start();
                     clearHighlights(); selectedPieceRef.current = null;
                 }
+            } else {
+                // If clicking empty space or invalid, re-enable controls
+                if (orbitControlsRef.current) orbitControlsRef.current.enabled = true;
             }
         };
 
@@ -864,15 +878,36 @@ const ChessGame: React.FC<ChessGameProps> = ({
                 </div>
             )}
 
-            {/* TOP LEFT: Controls Panel */}
-            <div className="glass-panel panel-fade-in" style={{ position: 'fixed', top: 20, left: 20, width: 230, animationDelay: '0.1s' }}>
-                <div className="panel-header">
-                    <span className="panel-icon"><GearIcon size={14} color="#c9a96e" /></span>
-                    Controls
+            {/* Mobile Controls Toggle Button */}
+            {!showControls && (
+                <button 
+                    className="mobile-menu-btn" 
+                    onClick={() => setShowControls(true)}
+                    aria-label="Toggle Controls"
+                >
+                    <GearIcon size={18} />
+                </button>
+            )}
+
+            {/* Top Left: Controls Panel */}
+            <div className={`glass-panel panel-fade-in mobile-controls ${showControls ? 'visible' : ''}`} style={{ position: 'fixed', top: 20, left: 20, width: 230, animationDelay: '0.1s' }}>
+                <div className="panel-header" style={{ justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span className="panel-icon"><GearIcon size={14} color="#c9a96e" /></span>
+                        Controls
+                    </div>
+                    {/* Close button inside mobile menu */}
+                    <button 
+                        className="mobile-menu-btn" 
+                        style={{ position: 'relative', top: 0, left: 0, padding: 4, display: 'none' }}
+                        onClick={() => setShowControls(false)}
+                    >
+                        ✕
+                    </button>
                 </div>
-                <div className="control-row"><span>Select / Move</span><kbd>L-Click</kbd></div>
-                <div className="control-row"><span>Orbit Camera</span><kbd>R-Click + Drag</kbd></div>
-                <div className="control-row" style={{ marginBottom: 16 }}><span>Zoom</span><kbd>Scroll</kbd></div>
+                <div className="control-row"><span>Select / Move</span><kbd>Tap / Click</kbd></div>
+                <div className="control-row"><span>Orbit</span><kbd>1-Finger / R-Click</kbd></div>
+                <div className="control-row" style={{ marginBottom: 16 }}><span>Zoom</span><kbd>Pinch / Scroll</kbd></div>
                 <div className="control-row" style={{ marginBottom: 8 }}>
                     <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>{modeLabel}</span>
                     {mode === 'online' && <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>{colorLabel}</span>}
@@ -884,10 +919,12 @@ const ChessGame: React.FC<ChessGameProps> = ({
                     </button>
                 )}
                 <button className="btn-reset" style={{ marginTop: 8 }} onClick={onExit}>← Menu</button>
+                {/* Mobile specific close button at bottom just in case */}
+                <button className="btn-reset" style={{ marginTop: 8, display: 'var(--mobile-only, none)' }} onClick={() => setShowControls(false)}>Close Menu</button>
             </div>
 
-            {/* TOP RIGHT: Turn Indicator + Player Names + Chat */}
-            <div className="glass-panel panel-fade-in" style={{ position: 'fixed', top: 20, right: 20, minWidth: 220, maxWidth: 260, textAlign: 'center', animationDelay: '0.2s', maxHeight: 'calc(100vh - 40px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            {/* Top Right: Turn Indicator + Player Names + Chat */}
+            <div className="glass-panel panel-fade-in mobile-top-right" style={{ position: 'fixed', top: 20, right: 20, minWidth: 220, textAlign: 'center', animationDelay: '0.2s', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 {/* Player names */}
                 {mode === 'online' && (
                     <div className="player-names-row">
@@ -954,8 +991,8 @@ const ChessGame: React.FC<ChessGameProps> = ({
                 )}
             </div>
 
-            {/* BOTTOM LEFT: White's Captures */}
-            <div className="glass-panel panel-fade-in" style={{ position: 'fixed', bottom: 20, left: 20, minWidth: 210, animationDelay: '0.3s' }}>
+            {/* Bottom Left: White's Captures */}
+            <div className="glass-panel panel-fade-in mobile-bottom-left" style={{ position: 'fixed', bottom: 20, left: 20, animationDelay: '0.3s' }}>
                 <div className="panel-label" style={{ color: '#818cf8' }}>
                     <span className="capture-dot" style={{ background: '#fff' }} />
                     White&apos;s Captures
@@ -966,8 +1003,8 @@ const ChessGame: React.FC<ChessGameProps> = ({
                 </div>
             </div>
 
-            {/* BOTTOM RIGHT: Black's Captures */}
-            <div className="glass-panel panel-fade-in" style={{ position: 'fixed', bottom: 20, right: 20, minWidth: 210, textAlign: 'right', animationDelay: '0.4s' }}>
+            {/* Bottom Right: Black's Captures */}
+            <div className="glass-panel panel-fade-in mobile-bottom-right" style={{ position: 'fixed', bottom: 20, right: 20, textAlign: 'right', animationDelay: '0.4s' }}>
                 <div className="panel-label" style={{ color: '#94a3b8' }}>
                     Black&apos;s Captures
                     <span className="capture-dot" style={{ background: '#1a1a2e', marginLeft: 8 }} />
@@ -978,9 +1015,9 @@ const ChessGame: React.FC<ChessGameProps> = ({
                 </div>
             </div>
 
-            {/* BOTTOM CENTER: Move History */}
+            {/* Bottom Center: Move History */}
             {moveHistory.length > 0 && (
-                <div className="glass-panel panel-fade-in" style={{ position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', maxWidth: 400, minWidth: 200, animationDelay: '0s' }}>
+                <div className="glass-panel panel-fade-in mobile-bottom-center" style={{ position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', animationDelay: '0s' }}>
                     <div className="panel-label" style={{ color: '#64748b', textAlign: 'center' }}>Move History</div>
                     <div className="move-history">
                         {moveHistory.map((m, i) => (
