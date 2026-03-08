@@ -11,6 +11,13 @@ import { getBestMove } from '@/lib/ai';
 import type { GameMode, Difficulty, PlayerColor } from '@/types/game';
 import { GearIcon, RefreshIcon, PawnIcon, CrownIcon, KingIcon, CloseIcon } from '@/components/Icons';
 
+interface ChatMessage {
+    sender: string;
+    text: string;
+    timestamp: number;
+    color?: string;
+}
+
 const SQUARE_SIZE = 3;
 
 interface ChessGameProps {
@@ -18,6 +25,8 @@ interface ChessGameProps {
     difficulty?: Difficulty;
     roomId?: string;
     playerColor?: PlayerColor;
+    playerName?: string;
+    opponentName?: string;
     onExit?: () => void;
 }
 
@@ -205,6 +214,8 @@ const ChessGame: React.FC<ChessGameProps> = ({
     difficulty = 2,
     roomId,
     playerColor = 'w',
+    playerName = 'You',
+    opponentName: initialOpponentName = 'Opponent',
     onExit,
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -219,6 +230,12 @@ const ChessGame: React.FC<ChessGameProps> = ({
     const [waitingForOpponent, setWaitingForOpponent] = useState(mode === 'online');
     const [opponentDisconnected, setOpponentDisconnected] = useState(false);
     const [gameResult, setGameResult] = useState<string | null>(null);
+    const [opponentName, setOpponentName] = useState(initialOpponentName);
+
+    // Chat state
+    const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+    const [chatInput, setChatInput] = useState('');
+    const chatEndRef = useRef<HTMLDivElement>(null);
 
     // Refs for values that need to be read inside the useEffect closure
     const waitingRef = useRef(mode === 'online');
@@ -247,8 +264,8 @@ const ChessGame: React.FC<ChessGameProps> = ({
         boardBlack: new THREE.MeshStandardMaterial({ color: 0x2d3142, roughness: 0.25, metalness: 0.1 }),
         boardEdge: new THREE.MeshStandardMaterial({ color: 0x1a0f0a, roughness: 0.4, metalness: 0.15 }),
         boardFrame: new THREE.MeshStandardMaterial({ color: 0x3d2b1f, roughness: 0.35, metalness: 0.1 }),
-        highlight: new THREE.MeshBasicMaterial({ color: 0xc9a96e, transparent: true, opacity: 0.35, depthWrite: false }),
-        danger: new THREE.MeshBasicMaterial({ color: 0xf43f5e, transparent: true, opacity: 0.4, depthWrite: false }),
+        highlight: new THREE.MeshBasicMaterial({ color: 0x22d65e, transparent: true, opacity: 0.6, depthWrite: false }),
+        danger: new THREE.MeshBasicMaterial({ color: 0xff3b3b, transparent: true, opacity: 0.55, depthWrite: false }),
         hover: new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15, depthWrite: false }),
     });
 
@@ -324,9 +341,9 @@ const ChessGame: React.FC<ChessGameProps> = ({
     const highlightSquare = useCallback((x: number, z: number, type: 'move' | 'capture' = 'move') => {
         let mesh: THREE.Mesh;
         if (type === 'capture') {
-            mesh = new THREE.Mesh(new THREE.RingGeometry(SQUARE_SIZE * 0.38, SQUARE_SIZE * 0.47, 32), materials.current.danger);
+            mesh = new THREE.Mesh(new THREE.RingGeometry(SQUARE_SIZE * 0.35, SQUARE_SIZE * 0.48, 32), materials.current.danger);
         } else {
-            mesh = new THREE.Mesh(new THREE.CircleGeometry(SQUARE_SIZE * 0.15, 32), materials.current.highlight);
+            mesh = new THREE.Mesh(new THREE.CircleGeometry(SQUARE_SIZE * 0.18, 32), materials.current.highlight);
         }
         mesh.rotation.x = -Math.PI / 2;
         mesh.position.set((x - 3.5) * SQUARE_SIZE, 0.03, (z - 3.5) * SQUARE_SIZE);
@@ -370,6 +387,24 @@ const ChessGame: React.FC<ChessGameProps> = ({
         } catch (e) { console.error('Opponent move error', e); }
     }, [game, spawnPieces, updateStatus]);
 
+    // Auto-scroll chat
+    useEffect(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [chatMessages]);
+
+    // Send chat message
+    const handleSendChat = useCallback(() => {
+        if (!chatInput.trim() || !roomId) return;
+        const socket = getSocket();
+        socket.emit('chat-message', {
+            roomId,
+            text: chatInput.trim(),
+            sender: playerName,
+            color: playerColor,
+        });
+        setChatInput('');
+    }, [chatInput, roomId, playerName, playerColor]);
+
     // Socket setup for online mode
     useEffect(() => {
         if (mode !== 'online' || !roomId) return;
@@ -383,10 +418,17 @@ const ChessGame: React.FC<ChessGameProps> = ({
             sessionStorage.removeItem(`chess-ready-${roomId}`);
         }
 
+        // Read opponent name from session if available
+        const storedOpponent = sessionStorage.getItem(`chess-opponent-${roomId}`);
+        if (storedOpponent) {
+            setOpponentName(storedOpponent);
+        }
+
         // Also listen for game-start in case it arrives after mount
-        socket.on('game-start', () => {
+        socket.on('game-start', ({ opponentName: oppName }: { opponentName?: string }) => {
             setWaitingForOpponent(false);
             waitingRef.current = false;
+            if (oppName) setOpponentName(oppName);
         });
 
         socket.on('opponent-move', (moveData: { from: string; to: string; promotion?: string }) => {
@@ -405,11 +447,23 @@ const ChessGame: React.FC<ChessGameProps> = ({
             setGameResult(result);
         });
 
+        // Chat messages
+        socket.on('chat-message', (msg: ChatMessage) => {
+            setChatMessages((prev) => [...prev, msg]);
+        });
+
+        socket.on('chat-history', (history: ChatMessage[]) => {
+            setChatMessages(history);
+        });
+
         // Ask the server to check room status (in case both players already joined)
-        socket.emit('check-room', { roomId }, (response: { playing: boolean }) => {
+        socket.emit('check-room', { roomId }, (response: { playing: boolean; opponentName?: string | null }) => {
             if (response && response.playing) {
                 setWaitingForOpponent(false);
                 waitingRef.current = false;
+            }
+            if (response?.opponentName) {
+                setOpponentName(response.opponentName);
             }
         });
 
@@ -419,6 +473,8 @@ const ChessGame: React.FC<ChessGameProps> = ({
             socket.off('opponent-disconnected');
             socket.off('opponent-resigned');
             socket.off('game-ended');
+            socket.off('chat-message');
+            socket.off('chat-history');
         };
     }, [mode, roomId, applyOpponentMove]);
 
@@ -748,6 +804,10 @@ const ChessGame: React.FC<ChessGameProps> = ({
     const colorLabel = playerColor === 'w' ? 'White' : 'Black';
     const modeLabel = mode === 'ai' ? `vs AI (${['', 'Easy', 'Medium', 'Hard'][difficulty]})` : mode === 'online' ? 'Online 1v1' : 'Local';
 
+    // Determine white/black player names
+    const whitePlayerName = playerColor === 'w' ? playerName : opponentName;
+    const blackPlayerName = playerColor === 'b' ? playerName : opponentName;
+
     return (
         <>
             <div ref={containerRef} style={{ position: 'fixed', inset: 0, zIndex: 0 }} />
@@ -826,8 +886,22 @@ const ChessGame: React.FC<ChessGameProps> = ({
                 <button className="btn-reset" style={{ marginTop: 8 }} onClick={onExit}>← Menu</button>
             </div>
 
-            {/* TOP RIGHT: Turn Indicator */}
-            <div className="glass-panel panel-fade-in" style={{ position: 'fixed', top: 20, right: 20, minWidth: 180, textAlign: 'center', animationDelay: '0.2s' }}>
+            {/* TOP RIGHT: Turn Indicator + Player Names + Chat */}
+            <div className="glass-panel panel-fade-in" style={{ position: 'fixed', top: 20, right: 20, minWidth: 220, maxWidth: 260, textAlign: 'center', animationDelay: '0.2s', maxHeight: 'calc(100vh - 40px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                {/* Player names */}
+                {mode === 'online' && (
+                    <div className="player-names-row">
+                        <div className="player-name-badge player-name-white">
+                            <span className="player-name-dot player-name-dot-white" />
+                            {whitePlayerName}
+                        </div>
+                        <div className="player-name-badge player-name-black">
+                            <span className="player-name-dot player-name-dot-black" />
+                            {blackPlayerName}
+                        </div>
+                    </div>
+                )}
+
                 <div className="panel-label">Current Turn</div>
                 <div className="turn-indicator">
                     <div className={`turn-dot ${turn === 'white' ? 'turn-dot-white' : 'turn-dot-black'}`} />
@@ -838,6 +912,44 @@ const ChessGame: React.FC<ChessGameProps> = ({
                 {status && (
                     <div className={`status-badge ${status === 'CHECKMATE!' ? 'status-checkmate' : status === 'CHECK!' ? 'status-check' : 'status-draw'}`}>
                         {status}
+                    </div>
+                )}
+
+                {/* In-game chat (online only) */}
+                {mode === 'online' && (
+                    <div className="chat-panel" style={{ flex: 1, minHeight: 0 }}>
+                        <div className="chat-header">💬 Chat</div>
+                        <div className="chat-messages">
+                            {chatMessages.length === 0 && (
+                                <div className="chat-empty">No messages yet...</div>
+                            )}
+                            {chatMessages.map((msg, i) => (
+                                <div
+                                    key={i}
+                                    className={`chat-bubble ${msg.sender === playerName ? 'chat-bubble-self' : 'chat-bubble-other'}`}
+                                >
+                                    <div className={`chat-sender ${msg.color === 'w' ? 'chat-sender-white' : 'chat-sender-black'}`}>
+                                        {msg.sender}
+                                    </div>
+                                    <div className="chat-text">{msg.text}</div>
+                                </div>
+                            ))}
+                            <div ref={chatEndRef} />
+                        </div>
+                        <div className="chat-input-row">
+                            <input
+                                type="text"
+                                className="chat-input"
+                                placeholder="Type..."
+                                value={chatInput}
+                                onChange={(e) => setChatInput(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleSendChat()}
+                                maxLength={200}
+                            />
+                            <button className="chat-send" onClick={handleSendChat} disabled={!chatInput.trim()}>
+                                ↑
+                            </button>
+                        </div>
                     </div>
                 )}
             </div>
