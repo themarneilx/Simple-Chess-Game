@@ -9,7 +9,7 @@ import { Chess, Move } from 'chess.js';
 import { getSocket, disconnectSocket } from '@/lib/socket';
 import { getBestMove } from '@/lib/ai';
 import type { GameMode, Difficulty, PlayerColor } from '@/types/game';
-import { GearIcon, RefreshIcon, PawnIcon, CrownIcon, KingIcon, CloseIcon } from '@/components/Icons';
+import { GearIcon, RefreshIcon, PawnIcon, CrownIcon, KingIcon, CloseIcon, ChatIcon, FlagIcon } from '@/components/Icons';
 
 interface ChatMessage {
     sender: string;
@@ -239,6 +239,9 @@ const ChessGame: React.FC<ChessGameProps> = ({
 
     // Mobile specific state
     const [showControls, setShowControls] = useState(false);
+    const [showMobileChat, setShowMobileChat] = useState(false);
+    const [showMoveHistory, setShowMoveHistory] = useState(false);
+    const [moveHistoryPage, setMoveHistoryPage] = useState(0);
 
     // Refs for values that need to be read inside the useEffect closure
     const waitingRef = useRef(mode === 'online');
@@ -268,8 +271,8 @@ const ChessGame: React.FC<ChessGameProps> = ({
         boardBlack: new THREE.MeshStandardMaterial({ color: 0x2d3142, roughness: 0.25, metalness: 0.1 }),
         boardEdge: new THREE.MeshStandardMaterial({ color: 0x1a0f0a, roughness: 0.4, metalness: 0.15 }),
         boardFrame: new THREE.MeshStandardMaterial({ color: 0x3d2b1f, roughness: 0.35, metalness: 0.1 }),
-        highlight: new THREE.MeshBasicMaterial({ color: 0x22d65e, transparent: true, opacity: 0.6, depthWrite: false }),
-        danger: new THREE.MeshBasicMaterial({ color: 0xff3b3b, transparent: true, opacity: 0.55, depthWrite: false }),
+        highlight: new THREE.MeshBasicMaterial({ color: 0x00E5FF, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }),
+        danger: new THREE.MeshBasicMaterial({ color: 0xff3b3b, transparent: true, opacity: 0.75, depthWrite: false, side: THREE.DoubleSide }),
         hover: new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15, depthWrite: false }),
     });
 
@@ -347,7 +350,7 @@ const ChessGame: React.FC<ChessGameProps> = ({
         if (type === 'capture') {
             mesh = new THREE.Mesh(new THREE.RingGeometry(SQUARE_SIZE * 0.35, SQUARE_SIZE * 0.48, 32), materials.current.danger);
         } else {
-            mesh = new THREE.Mesh(new THREE.CircleGeometry(SQUARE_SIZE * 0.18, 32), materials.current.highlight);
+            mesh = new THREE.Mesh(new THREE.CircleGeometry(SQUARE_SIZE * 0.22, 32), materials.current.highlight);
         }
         mesh.rotation.x = -Math.PI / 2;
         mesh.position.set((x - 3.5) * SQUARE_SIZE, 0.03, (z - 3.5) * SQUARE_SIZE);
@@ -396,6 +399,14 @@ const ChessGame: React.FC<ChessGameProps> = ({
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [chatMessages]);
 
+    // Auto-advance move history to latest page
+    useEffect(() => {
+        if (moveHistory.length > 0) {
+            const MOVES_PER_PAGE = 10;
+            setMoveHistoryPage(Math.max(0, Math.ceil(moveHistory.length / MOVES_PER_PAGE) - 1));
+        }
+    }, [moveHistory]);
+
     // Send chat message
     const handleSendChat = useCallback(() => {
         if (!chatInput.trim() || !roomId) return;
@@ -443,6 +454,17 @@ const ChessGame: React.FC<ChessGameProps> = ({
             setOpponentDisconnected(true);
         });
 
+        // Opponent came back after disconnect
+        socket.on('opponent-reconnected', () => {
+            setOpponentDisconnected(false);
+        });
+
+        // Opponent timed out (120s) — game is over
+        socket.on('opponent-abandoned', () => {
+            setOpponentDisconnected(false);
+            setGameResult('Opponent left the game. You win!');
+        });
+
         socket.on('opponent-resigned', ({ winner }: { winner: string }) => {
             setGameResult(`${winner.charAt(0).toUpperCase() + winner.slice(1)} wins by resignation!`);
         });
@@ -460,6 +482,46 @@ const ChessGame: React.FC<ChessGameProps> = ({
             setChatMessages(history);
         });
 
+        // Auto-reconnect: when socket reconnects after a drop, re-register with the room
+        // Track whether this is the first connect or a reconnection
+        let hasConnectedOnce = socket.connected;
+        const handleReconnect = () => {
+            if (!hasConnectedOnce) {
+                hasConnectedOnce = true;
+                return; // Skip the initial connect
+            }
+            socket.emit('reconnect-room', {
+                roomId: roomIdRef.current,
+                playerName,
+            }, (response: { success: boolean; fen?: string; color?: string; opponentName?: string; chatHistory?: ChatMessage[]; error?: string }) => {
+                if (response?.success) {
+                    // Restore game state from server
+                    if (response.fen) {
+                        const currentGame = gameRef.current;
+                        currentGame.load(response.fen);
+                        spawnPieces();
+                        updateStatus();
+                    }
+                    if (response.opponentName) {
+                        setOpponentName(response.opponentName);
+                    }
+                    if (response.chatHistory) {
+                        setChatMessages(response.chatHistory);
+                    }
+                    // Clear any disconnect overlay from our side
+                    setOpponentDisconnected(false);
+                    setWaitingForOpponent(false);
+                    waitingRef.current = false;
+                    console.log('[Reconnect] Successfully rejoined room');
+                } else {
+                    console.error('[Reconnect] Failed:', response?.error);
+                    setGameResult('Connection lost. Room no longer exists.');
+                }
+            });
+        };
+
+        socket.on('connect', handleReconnect);
+
         // Ask the server to check room status (in case both players already joined)
         socket.emit('check-room', { roomId }, (response: { playing: boolean; opponentName?: string | null }) => {
             if (response && response.playing) {
@@ -475,11 +537,15 @@ const ChessGame: React.FC<ChessGameProps> = ({
             socket.off('game-start');
             socket.off('opponent-move');
             socket.off('opponent-disconnected');
+            socket.off('opponent-reconnected');
+            socket.off('opponent-abandoned');
             socket.off('opponent-resigned');
             socket.off('game-ended');
             socket.off('chat-message');
             socket.off('chat-history');
+            socket.off('connect', handleReconnect);
         };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [mode, roomId, applyOpponentMove]);
 
     /* ───────────── SCENE SETUP ───────────── */
@@ -845,13 +911,18 @@ const ChessGame: React.FC<ChessGameProps> = ({
             )}
 
             {/* Opponent disconnected overlay */}
-            {opponentDisconnected && (
+            {opponentDisconnected && !gameResult && (
                 <div className="game-overlay">
-                    <div className="glass-panel" style={{ textAlign: 'center', maxWidth: 340, padding: 32 }}>
-                        <div style={{ marginBottom: 12 }}><CloseIcon size={40} color="rgba(244,63,94,0.6)" /></div>
+                    <div className="glass-panel" style={{ textAlign: 'center', maxWidth: 360, padding: 32 }}>
+                        <div className="loading-spinner" style={{ margin: '0 auto 16px' }} />
                         <h3 style={{ marginBottom: 8 }}>Opponent Disconnected</h3>
-                        <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginBottom: 20 }}>Your opponent has left the game.</p>
-                        <button className="btn-primary" onClick={onExit}>← Back to Menu</button>
+                        <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>
+                            Waiting for them to reconnect...
+                        </p>
+                        <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', marginBottom: 20 }}>
+                            The game will be preserved for 2 minutes
+                        </p>
+                        <button className="btn-secondary" onClick={onExit}>Leave Game</button>
                     </div>
                 </div>
             )}
@@ -902,7 +973,7 @@ const ChessGame: React.FC<ChessGameProps> = ({
                         style={{ position: 'relative', top: 0, left: 0, padding: 4, display: 'none' }}
                         onClick={() => setShowControls(false)}
                     >
-                        ✕
+                        <CloseIcon size={12} />
                     </button>
                 </div>
                 <div className="control-row"><span>Select / Move</span><kbd>Tap / Click</kbd></div>
@@ -915,7 +986,7 @@ const ChessGame: React.FC<ChessGameProps> = ({
                 {mode !== 'online' && <button className="btn-reset" onClick={handleReset}><span className="btn-icon-text"><RefreshIcon size={14} /> New Game</span></button>}
                 {mode === 'online' && !gameResult && (
                     <button className="btn-reset" style={{ color: '#f43f5e', borderColor: 'rgba(244,63,94,0.3)', background: 'rgba(244,63,94,0.1)' }} onClick={handleResign}>
-                        ⚐ Resign
+                        <span className="btn-icon-text"><FlagIcon size={14} color="#f43f5e" /> Resign</span>
                     </button>
                 )}
                 <button className="btn-reset" style={{ marginTop: 8 }} onClick={onExit}>← Menu</button>
@@ -926,18 +997,16 @@ const ChessGame: React.FC<ChessGameProps> = ({
             {/* Top Right: Turn Indicator + Player Names + Chat */}
             <div className="glass-panel panel-fade-in mobile-top-right" style={{ position: 'fixed', top: 20, right: 20, minWidth: 220, textAlign: 'center', animationDelay: '0.2s', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 {/* Player names */}
-                {mode === 'online' && (
-                    <div className="player-names-row">
-                        <div className="player-name-badge player-name-white">
-                            <span className="player-name-dot player-name-dot-white" />
-                            {whitePlayerName}
-                        </div>
-                        <div className="player-name-badge player-name-black">
-                            <span className="player-name-dot player-name-dot-black" />
-                            {blackPlayerName}
-                        </div>
+                <div className="player-names-row">
+                    <div className="player-name-badge player-name-white">
+                        <span className="player-name-dot player-name-dot-white" />
+                        {whitePlayerName}
                     </div>
-                )}
+                    <div className="player-name-badge player-name-black">
+                        <span className="player-name-dot player-name-dot-black" />
+                        {blackPlayerName}
+                    </div>
+                </div>
 
                 <div className="panel-label">Current Turn</div>
                 <div className="turn-indicator">
@@ -955,7 +1024,7 @@ const ChessGame: React.FC<ChessGameProps> = ({
                 {/* In-game chat (online only) */}
                 {mode === 'online' && (
                     <div className="chat-panel" style={{ flex: 1, minHeight: 0 }}>
-                        <div className="chat-header">💬 Chat</div>
+                        <div className="chat-header"><ChatIcon size={12} /> Chat</div>
                         <div className="chat-messages">
                             {chatMessages.length === 0 && (
                                 <div className="chat-empty">No messages yet...</div>
@@ -993,7 +1062,7 @@ const ChessGame: React.FC<ChessGameProps> = ({
 
             {/* Bottom Left: White's Captures */}
             <div className="glass-panel panel-fade-in mobile-bottom-left" style={{ position: 'fixed', bottom: 20, left: 20, animationDelay: '0.3s' }}>
-                <div className="panel-label" style={{ color: '#818cf8' }}>
+                <div className="panel-label" style={{ color: '#c9a96e' }}>
                     <span className="capture-dot" style={{ background: '#fff' }} />
                     White&apos;s Captures
                 </div>
@@ -1015,25 +1084,126 @@ const ChessGame: React.FC<ChessGameProps> = ({
                 </div>
             </div>
 
-            {/* Bottom Center: Move History */}
-            {moveHistory.length > 0 && (
-                <div className="glass-panel panel-fade-in mobile-bottom-center" style={{ position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', animationDelay: '0s' }}>
-                    <div className="panel-label" style={{ color: '#64748b', textAlign: 'center' }}>Move History</div>
-                    <div className="move-history">
-                        {moveHistory.map((m, i) => (
-                            <span key={i} className={`move-entry ${i % 2 === 0 ? 'move-white' : 'move-black'}`}>
-                                {i % 2 === 0 && <span className="move-number">{Math.floor(i / 2) + 1}.</span>}{m}
-                            </span>
-                        ))}
+            {/* Top Right: Move History (below turn panel) */}
+            {moveHistory.length > 0 && showMoveHistory && (() => {
+                const MOVES_PER_PAGE = 10;
+                const totalPages = Math.ceil(moveHistory.length / MOVES_PER_PAGE);
+                const currentPage = Math.min(moveHistoryPage, totalPages - 1);
+                const start = currentPage * MOVES_PER_PAGE;
+                const pageMoves = moveHistory.slice(start, start + MOVES_PER_PAGE);
+                return (
+                    <div className="glass-panel panel-fade-in move-history-panel">
+                        <div className="move-history-header">
+                            <span className="panel-label" style={{ color: 'rgba(255,255,255,0.35)', margin: 0 }}>Moves</span>
+                            <div className="move-history-controls">
+                                {totalPages > 1 && (
+                                    <>
+                                        <button
+                                            className="move-page-btn"
+                                            onClick={() => setMoveHistoryPage(Math.max(0, currentPage - 1))}
+                                            disabled={currentPage === 0}
+                                        >
+                                            &lsaquo;
+                                        </button>
+                                        <span className="move-page-info">{currentPage + 1}/{totalPages}</span>
+                                        <button
+                                            className="move-page-btn"
+                                            onClick={() => setMoveHistoryPage(Math.min(totalPages - 1, currentPage + 1))}
+                                            disabled={currentPage >= totalPages - 1}
+                                        >
+                                            &rsaquo;
+                                        </button>
+                                    </>
+                                )}
+                                <button
+                                    className="move-page-btn move-hide-btn"
+                                    onClick={() => setShowMoveHistory(false)}
+                                    title="Hide"
+                                >
+                                    <CloseIcon size={10} />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="move-history">
+                            {pageMoves.map((m, i) => {
+                                const absIdx = start + i;
+                                return (
+                                    <span key={absIdx} className={`move-entry ${absIdx % 2 === 0 ? 'move-white' : 'move-black'}`}>
+                                        {absIdx % 2 === 0 && <span className="move-number">{Math.floor(absIdx / 2) + 1}.</span>}{m}
+                                    </span>
+                                );
+                            })}
+                        </div>
                     </div>
-                </div>
+                );
+            })()}
+            {/* Show move history toggle when hidden */}
+            {moveHistory.length > 0 && !showMoveHistory && (
+                <button
+                    className="move-history-show-btn"
+                    onClick={() => setShowMoveHistory(true)}
+                >
+                    Moves ({moveHistory.length})
+                </button>
             )}
 
             {/* TOP CENTER: Title */}
-            <div className="panel-fade-in" style={{ position: 'fixed', top: 22, left: '50%', transform: 'translateX(-50%)', textAlign: 'center', zIndex: 9999, animationDelay: '0s', pointerEvents: 'none' }}>
+            <div className="panel-fade-in game-title-wrapper">
                 <div className="game-title"><KingIcon size={20} color="#c9a96e" /> CHESS <KingIcon size={20} color="#94a3b8" /></div>
                 <div className="game-subtitle">3D Edition</div>
             </div>
+
+            {/* Mobile Chat Toggle Button (online only) */}
+            {mode === 'online' && (
+                <button
+                    className="mobile-chat-toggle"
+                    onClick={() => setShowMobileChat(!showMobileChat)}
+                    aria-label="Toggle Chat"
+                >
+                    <ChatIcon size={18} />
+                </button>
+            )}
+
+            {/* Mobile Chat Bottom Sheet (online only) */}
+            {mode === 'online' && (
+                <div className={`mobile-chat-sheet ${showMobileChat ? 'active' : ''}`}>
+                    <div className="mobile-chat-sheet-header">
+                        <span>Chat</span>
+                        <button className="mobile-chat-close" onClick={() => setShowMobileChat(false)}><CloseIcon size={14} /></button>
+                    </div>
+                    <div className="chat-messages">
+                        {chatMessages.length === 0 && (
+                            <div className="chat-empty">No messages yet...</div>
+                        )}
+                        {chatMessages.map((msg, i) => (
+                            <div
+                                key={i}
+                                className={`chat-bubble ${msg.sender === playerName ? 'chat-bubble-self' : 'chat-bubble-other'}`}
+                            >
+                                <div className={`chat-sender ${msg.color === 'w' ? 'chat-sender-white' : 'chat-sender-black'}`}>
+                                    {msg.sender}
+                                </div>
+                                <div className="chat-text">{msg.text}</div>
+                            </div>
+                        ))}
+                        <div ref={chatEndRef} />
+                    </div>
+                    <div className="chat-input-row">
+                        <input
+                            type="text"
+                            className="chat-input"
+                            placeholder="Type a message..."
+                            value={chatInput}
+                            onChange={(e) => setChatInput(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleSendChat()}
+                            maxLength={200}
+                        />
+                        <button className="chat-send" onClick={handleSendChat} disabled={!chatInput.trim()}>
+                            ↑
+                        </button>
+                    </div>
+                </div>
+            )}
         </>
     );
 };
