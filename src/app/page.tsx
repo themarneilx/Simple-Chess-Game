@@ -48,7 +48,7 @@ export default function Home() {
                 <div className="difficulty-icon">{d.icon}</div>
                 <div className="difficulty-name">{d.name}</div>
                 <div className="difficulty-desc">{d.desc}</div>
-                {difficulty === d.level && <div className="difficulty-check">✓</div>}
+                {difficulty === d.level && <div className="difficulty-check">&bull;</div>}
               </button>
             ))}
           </div>
@@ -100,7 +100,7 @@ export default function Home() {
             onClick={() => router.push('/lobby')}
           >
             <div className="mode-icon-wrapper">
-              <div className="mode-icon"><SwordsIcon size={36} color="#9b8ced" /></div>
+              <div className="mode-icon"><SwordsIcon size={36} color="#94a3b8" /></div>
               <div className="mode-icon-glow" />
             </div>
             <div className="mode-name">Play Online</div>

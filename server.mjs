@@ -334,6 +334,63 @@ app.prepare().then(() => {
       }
     });
 
+    // Reconnect to a room after disconnect
+    socket.on('reconnect-room', ({ roomId, playerName }, callback) => {
+      const room = rooms.get(roomId);
+      if (!room) {
+        callback?.({ success: false, error: 'Room no longer exists' });
+        return;
+      }
+
+      // Find the disconnected player by name and color
+      const player = room.players.find(
+        (p) => !p.connected && p.name === playerName
+      );
+
+      if (!player) {
+        callback?.({ success: false, error: 'No matching disconnected player found' });
+        return;
+      }
+
+      // Update socket ID and mark as connected
+      const oldSocketId = player.socketId;
+      player.socketId = socket.id;
+      player.connected = true;
+
+      // If this player was the creator, update creator reference
+      if (room.creatorSocketId === oldSocketId) {
+        room.creatorSocketId = socket.id;
+      }
+
+      socket.join(roomId);
+
+      // Clear any pending timers
+      if (room.cleanupTimer) {
+        clearTimeout(room.cleanupTimer);
+        room.cleanupTimer = null;
+      }
+      if (room.disconnectTimer) {
+        clearTimeout(room.disconnectTimer);
+        room.disconnectTimer = null;
+      }
+
+      const opponent = room.players.find((p) => p.socketId !== socket.id);
+
+      console.log(`[Room] ${playerName} reconnected to room ${roomId}`);
+
+      // Notify opponent that player is back
+      socket.to(roomId).emit('opponent-reconnected');
+
+      // Send game state back to the reconnecting player
+      callback?.({
+        success: true,
+        fen: room.fen,
+        color: player.color,
+        opponentName: opponent?.name || 'Opponent',
+        chatHistory: room.chatHistory || [],
+      });
+    });
+
     // Disconnect
     socket.on('disconnect', () => {
       console.log(`[Socket] Disconnected: ${socket.id}`);
@@ -361,20 +418,38 @@ app.prepare().then(() => {
           } else if (room.status === 'playing') {
             // Mark player as disconnected
             room.players[playerIndex].connected = false;
-            socket.to(roomId).emit('opponent-disconnected');
+
+            // Notify opponent after a short grace period (3 seconds)
+            // so brief network blips don't trigger the overlay
+            room.disconnectTimer = setTimeout(() => {
+              const currentRoom = rooms.get(roomId);
+              if (currentRoom) {
+                const p = currentRoom.players[playerIndex];
+                if (p && !p.connected) {
+                  socket.to(roomId).emit('opponent-disconnected');
+                }
+              }
+            }, 3000);
+
             console.log(`[Room] Player disconnected from room ${roomId}`);
 
-            // Auto-cleanup after 60 seconds
-            setTimeout(() => {
+            // Auto-cleanup after 120 seconds if still disconnected
+            room.cleanupTimer = setTimeout(() => {
               const currentRoom = rooms.get(roomId);
               if (
                 currentRoom &&
                 currentRoom.players.some((p) => !p.connected)
               ) {
+                // Notify remaining connected players
+                currentRoom.players.forEach((p) => {
+                  if (p.connected) {
+                    io.to(p.socketId).emit('opponent-abandoned');
+                  }
+                });
                 rooms.delete(roomId);
                 console.log(`[Room] Cleaned up abandoned room ${roomId}`);
               }
-            }, 60000);
+            }, 120000);
           }
 
           io.emit('rooms-updated', getPublicRooms());

@@ -6,7 +6,7 @@ import { getSocket } from '@/lib/socket';
 import { RoomInfo } from '@/types/game';
 import {
   SwordsIcon, GlobeIcon, LockIcon, CopyIcon, CastleIcon,
-  UserIcon, WarningIcon, CloseIcon,
+  UserIcon, WarningIcon, CloseIcon, ChatIcon, PlayIcon,
 } from '@/components/Icons';
 
 interface ChatMessage {
@@ -256,7 +256,7 @@ export default function LobbyPage() {
 
               <div className={`waiting-player-card ${waitingRoom.opponentName ? 'active' : ''}`}>
                 <div className="waiting-player-icon">
-                  <UserIcon size={24} color={waitingRoom.opponentName ? '#9b8ced' : 'rgba(255,255,255,0.15)'} />
+                  <UserIcon size={24} color={waitingRoom.opponentName ? '#94a3b8' : 'rgba(255,255,255,0.15)'} />
                 </div>
                 <div className={`waiting-player-name ${!waitingRoom.opponentName ? 'waiting-player-empty' : ''}`}>
                   {waitingRoom.opponentName || 'Waiting...'}
@@ -294,7 +294,7 @@ export default function LobbyPage() {
                 onClick={handleStartGame}
                 disabled={!waitingRoom.opponentName}
               >
-                ▶ Start Game
+                <span className="btn-icon-text"><PlayIcon size={16} /> Start Game</span>
               </button>
             )}
 
@@ -308,7 +308,7 @@ export default function LobbyPage() {
 
             {/* Lobby Chat */}
             <div className="lobby-chat">
-              <div className="chat-header">💬 Room Chat</div>
+              <div className="chat-header"><ChatIcon size={12} /> Room Chat</div>
               <div className="chat-messages">
                 {chatMessages.length === 0 && (
                   <div className="chat-empty">No messages yet...</div>
@@ -318,7 +318,7 @@ export default function LobbyPage() {
                     key={i}
                     className={`chat-bubble ${msg.sender === playerName.trim() ? 'chat-bubble-self' : 'chat-bubble-other'}`}
                   >
-                    <div className="chat-sender" style={{ color: msg.sender === playerName.trim() ? '#c9a96e' : '#9b8ced' }}>
+                    <div className="chat-sender" style={{ color: msg.sender === playerName.trim() ? '#c9a96e' : '#94a3b8' }}>
                       {msg.sender}
                     </div>
                     <div className="chat-text">{msg.text}</div>
